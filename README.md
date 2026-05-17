@@ -1,4 +1,4 @@
-# Post-Analysis Eval Suite
+# LLM Statistical Reasoning Eval
 
 An evaluation framework that systematically identifies and tests a blind spot in frontier AI models. Through iterative experimentation across 40+ candidate tasks, I discovered that Gemini Flash consistently skips post-analysis validation steps that any senior data scientist would perform automatically. I then built a focused 10-task suite around that finding, achieving a 0% pass rate across all 30 trials.
 
@@ -61,7 +61,7 @@ Trajectory inspection confirms the behavioral pattern across all 30 trials. The 
 ## Project Structure
 
 ```
-Post-Analysis_Eval_Suite/
+LLM_Statistical_Reasoning_Eval/
 ├── README.md
 └── experiments/
     ├── V1/                          # Round 1, 7 probing tasks
