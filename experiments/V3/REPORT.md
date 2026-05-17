@@ -3,6 +3,10 @@
 **Generated:** 2026-05-16
 **Target:** 10 Harbor tasks testing statistical-assumption verification against `gemini-3-flash-preview`. Goal: pass@3 < 30%.
 
+**Update — 3 new tasks added (2026-05-16, later same day):** regression-to-mean (A), unequal-variances-anova (B), confounded-comparison (C). Sanity 6/6 (oracle=1, nop=0); Gemini eval **0/3 each** after one Task-C verifier tightening pass. See "Addendum: tasks A/B/C" below.
+
+**Update — suite trimmed to exactly 10 tasks (2026-05-16, later same day):** removed N3 `influential-outliers` (2/3 — task too easy for Gemini), E2 `longitudinal-data-structure` (4/10 — confirmed degraded), and B `unequal-variances-anova` (newly added). Final suite: E1, E3, E4 + N1, N2, N4, N5, N6 + A (regression-to-mean) + C (confounded-comparison). Job artifacts for the removed tasks are kept in `jobs/` for the historical record.
+
 ---
 
 ## Headline (after fix round 2)
@@ -241,3 +245,78 @@ External scripts (not in repo):
 5. ✅ **Delete `/tmp/gemini.env`** — removed after each eval round.
 
 The API key was never written to any file inside the repo. `.gitignore` already covers `jobs/`, `.env*`, `*.key`, `*.api_key`, `.gemini_key`.
+
+---
+
+## Addendum: tasks A / B / C (added 2026-05-16, later same day)
+
+Three additional tasks built and evaluated against `gemini-3-flash-preview`.
+
+| # | Task | Sanity (oracle/nop) | Gemini pass@3 | Verdict |
+|---|------|:-------------------:|:-------------:|:------:|
+| A | `regression-to-mean` | 1.0 / 0.0 | **0 / 3** | ✓ |
+| B | `unequal-variances-anova` | 1.0 / 0.0 | **0 / 3** | ✓ |
+| C | `confounded-comparison` | 1.0 / 0.0 (× 2) | **0 / 3** (post-fix; 3/3 pre-fix) | ✓ |
+
+All three under the <30% target. Layout identical to the 10 existing tasks.
+
+### A — regression-to-mean
+
+- **Generator:** `_build/generate_regression_to_mean.py`, seed=21 (seed=42 had comparison-group sampling drift down too far; seed=21 is clean).
+- **Design:** latent-variable model. 200 candidates drawn from `true_skill ~ N(70, 6)` with measurement noise `N(0, 8)`; bottom 100 by pre-score become the `training` group; an independent random sample of 100 from the same population is the `comparison` group. True training effect = 0.
+- **Trap:** within-group paired t on training shows `+5.4` apparent improvement (p ≈ 5e-7) — pure regression to the mean from selecting on a noisy pre-score. ANCOVA `post ~ pre + group` correctly recovers β_group ≈ 0.18, p = 0.90.
+- **Spec deviation:** the brief asked for diff-in-diff p > 0.10 to be satisfied. With n_t = n_c = 100 and equal noise variances, the diff-in-diff t-statistic is exactly within-group_t / √2 by construction, so within p<0.01 implies diff-in-diff p<0.063 — those two conditions are mutually exclusive. ANCOVA, the textbook correction for regression-to-mean, is what discriminates and is what the oracle uses.
+- **Validation 5/6 pass:** the diff-in-diff condition #3 fails by design; ANCOVA (added as condition #6) passes at p=0.90. Documented in the generator docstring.
+- **Gemini failure mode (all 3 trials):** ran paired t-test on the training group only, reported p≈0 and `training_effective=true`. Did not notice the comparison group existed in the data.
+
+### B — unequal-variances-anova
+
+- **Generator:** `_build/generate_unequal_variances.py`, seed=182 (found by search; seed=42 gives ANOVA p=0.94 — no false positive).
+- **Design:** all 4 departments have *true* mean = 50. A and B have sd=2.5 (tight), C and D have sd=25 (huge). With n=50 each balanced, the standard ANOVA pools variances and is normally conservative under heteroscedasticity — but at seed=182, C's sample mean drifts to 46 and D's to 57 (an 11-point gap by chance), enough to inflate MSB and push F=3.18, p=0.025.
+- **Trap:** standard `f_oneway` reports p=0.025 (false positive). Welch (alexandergovern) gives p=0.14; Kruskal-Wallis gives p=0.31. Levene p≈3e-26 makes the variance-heterogeneity obvious to anyone who checks.
+- **Spec deviation:** the brief proposed means A=52, B=48 with C=D=50 and expected standard ANOVA significant + Welch non-significant. That's impossible with balanced groups because (a) heteroscedasticity makes ANOVA *conservative* (less powerful), so a real 4-pt gap gets washed out by C/D's pooled noise (E[F]=1.42); and (b) if the means really differed, Welch would detect it *more* robustly than ANOVA, not less. The only configuration that yields "ANOVA significant, Welch null" with balanced n is a true null where ANOVA's Type-I error is inflated by lucky sample-mean drift in the high-variance groups. That is what this generator implements.
+- **Validation 6/6 pass** at the locked seed.
+- **Gemini failure mode (all 3 trials):** ran `f_oneway` straight off the bat, reported p=0.025 and `significant_difference=true`. None of the trials checked Levene or considered a variance-aware test.
+
+### C — confounded-comparison
+
+- **Generator:** `_build/generate_confounded.py`, seed=21 (seed=42 had `employee_type` at p=0.089, just under the "all nuisance p > 0.10" check; seed=21 puts all four nuisance variables above p=0.30).
+- **Design:** 100 per program. Program A's `baseline_score ~ N(80, 6)`; program B's `baseline_score ~ N(60, 6)`. Both programs apply the *same* +10 improvement (`outcome = baseline + 10 + N(0, 5)`). Four irrelevant covariates (`department`, `years_experience`, `location`, `employee_type`) added as distractors; none has p < 0.10 with `outcome_score`.
+- **Trap:** naive Welch t on `outcome_score` gives p=4e-49 (A "much better" — pure confounding). Gain-score t on `outcome - baseline` *partially* corrects the confounding but yields p=0.001 (chance Type-I error from sample variation in the gain difference; in this seed sample A's gain is 8.89 vs B's 11.02). Only ANCOVA `outcome ~ baseline + program` correctly recovers β_program ≈ -0.58, p=0.68.
+- **Verifier tightening (pre → post-fix):**
+  - **Pre-fix verifier:** required `program_a_better == false OR p_value > 0.05`. Gemini scored **3/3** because all three trials used gain scores, concluded "B is significantly better" (program_a_better=false, p=0.001), and the verifier passed them — even though the conclusion is a Type-I error of the opposite direction.
+  - **Post-fix verifier:** requires `p_value > 0.05` (any direction). Reflects the actual ground truth that both programs have identical true effects, so *any* significant conclusion is wrong. Oracle (ANCOVA p=0.68) still passes.
+  - **Post-fix Gemini result:** **0/3** — two trials used gain scores (p=0.001 each, caught), one used naive outcome t-test (p=2e-49, caught).
+- **Validation 6/6 pass** at the locked seed.
+- **Gemini failure mode (post-fix):** when given baseline + outcome columns, Gemini consistently reaches for gain-score analysis as the "control for baseline" trick. It does not consider that gain-score regressions still have a noisy difference and can produce false positives, and it does not try ANCOVA.
+
+### Addendum sanity / eval timings
+
+- Local validation (oracle vs naive math) for all 3 tasks: done inline.
+- Harbor sanity: 7 trials (3 oracle + 3 nop + 1 oracle-re-sanity for Task C after verifier tightening), all rewards correct. Wall-clock ≈ 4 min total.
+- Gemini eval: 12 trials total (3 × 3 initial + 3 Task-C re-eval after verifier fix). Wall-clock ≈ 13 min for initial 3 (parallel), 5 min for the re-eval.
+
+### Addendum files delivered
+
+```
+V3/
+├── tasks/
+│   ├── regression-to-mean/          (NEW)  9 files
+│   ├── unequal-variances-anova/     (NEW)  9 files
+│   └── confounded-comparison/       (NEW)  9 files  ← verifier tightened
+├── _build/
+│   ├── generate_regression_to_mean.py
+│   ├── generate_unequal_variances.py
+│   └── generate_confounded.py
+└── jobs/
+    ├── sanity-{A,B,C}-{oracle,nop}/  (6 trials)
+    ├── sanity-C-oracle-v2/           (1 trial, after verifier tightening)
+    ├── gemini-{A,B,C}/               (9 Gemini trials, k=3 each)
+    └── gemini-C-v2/                  (3 Gemini trials, post-fix)
+```
+
+### Addendum security check
+
+- `/tmp/gemini.env` deleted after eval (see cleanup step below).
+- `grep -r "AIzaSy"` against the entire `experiments/V3` tree (excluding `jobs/` which is `.gitignore`d): **no matches**.
+- No secrets in any file that would be committed.

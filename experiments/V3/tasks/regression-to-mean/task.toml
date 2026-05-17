@@ -1,10 +1,10 @@
 schema_version = "1.2"
 
 [task]
-name = "sanjith/influential-outliers"
-description = "Fit a simple linear regression of sales revenue on advertising spend and report the cleaned coefficient, detecting and removing unduly influential observations via influence diagnostics."
+name = "sanjith/regression-to-mean"
+description = "Evaluate whether a training program improved employee skills, using pre/post assessment scores."
 authors = [{ name = "Sanjith" }]
-keywords = ["data-science", "statistics", "regression", "influence-diagnostics"]
+keywords = ["data-science", "statistics", "causal-inference", "regression-to-mean"]
 
 [metadata]
 

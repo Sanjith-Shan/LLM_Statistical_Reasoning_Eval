@@ -1,4 +1,4 @@
 #!/bin/bash
-set -u
-mkdir -p /logs/verifier
+set -e
+cd /workspace
 python /tests/verify.py

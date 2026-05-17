@@ -1,10 +1,10 @@
 schema_version = "1.2"
 
 [task]
-name = "sanjith/longitudinal-data-structure"
-description = "Build a readmission risk classifier on a patient-visit dataset where naive deduplication destroys the longitudinal signal."
+name = "sanjith/confounded-comparison"
+description = "Compare two professional development programs and determine which is more effective."
 authors = [{ name = "Sanjith" }]
-keywords = ["data-science", "machine-learning", "longitudinal", "feature-engineering"]
+keywords = ["data-science", "statistics", "causal-inference", "confounding"]
 
 [metadata]
 
